@@ -139,7 +139,7 @@ def restart_system():
         print(YELLOW + "Restarting Bitaxe system to apply new settings..." + RESET)
         response = requests.post(f"{bitaxe_ip}/api/system/restart", timeout=10)
         response.raise_for_status()  # Raise an exception for HTTP errors
-        time.sleep(30)  # Allow 30s time for the system to restart
+        time.sleep(60)  # Allow 60s time for the system to restart and start hashing
     except requests.exceptions.RequestException as e:
         print(RED + f"Error restarting the system: {e}" + RESET)
 
@@ -193,9 +193,9 @@ def benchmark_iteration(core_voltage, frequency):
             time.sleep(sample_interval)
     
     if hash_rates and temperatures and power_consumptions:
-        # Remove 2 highest and 2 lowest hashrates in case of outliers
+        # Remove 3 highest and 3 lowest hashrates in case of outliers
         sorted_hashrates = sorted(hash_rates)
-        trimmed_hashrates = sorted_hashrates[2:-2]  # Remove first two and last two elements
+        trimmed_hashrates = sorted_hashrates[3:-3]  # Remove first 3 and last 3 elements
         average_hashrate = sum(trimmed_hashrates) / len(trimmed_hashrates)
         
         average_temperature = sum(temperatures) / len(temperatures)
@@ -208,8 +208,8 @@ def benchmark_iteration(core_voltage, frequency):
             print(RED + "Warning: Zero hashrate detected, skipping efficiency calculation" + RESET)
             return None, None, None, False
         
-        # Calculate if hashrate is within 10% of expected
-        hashrate_within_tolerance = (average_hashrate >= expected_hashrate * 0.9)
+        # Calculate if hashrate is within 8% of expected
+        hashrate_within_tolerance = (average_hashrate >= expected_hashrate * 0.92)
         
         print(GREEN + f"Average Hashrate: {average_hashrate:.2f} GH/s (Expected: {expected_hashrate:.2f} GH/s)" + RESET)
         print(GREEN + f"Average Temperature: {average_temperature:.2f}°C" + RESET)
@@ -274,6 +274,7 @@ try:
                 if current_voltage + voltage_increment <= max_allowed_voltage:
                     current_voltage += voltage_increment
                     current_frequency -= frequency_increment  # Go back to one frequency step and retry
+                    print(YELLOW + f"Hashrate to low compared to expected. Decreasing frequency to {current_frequency}MHz and increasing voltage to {current_voltage}mV" + RESET)
                 else:
                     break  # We've reached max voltage without good results
         else:
@@ -308,6 +309,27 @@ finally:
     if results:
         # Sort results by averageHashRate in descending order and get the top 5
         top_5_results = sorted(results, key=lambda x: x["averageHashRate"], reverse=True)[:5]
+        
+        # Create a dictionary containing all results and top performers
+        final_data = {
+            "all_results": results,
+            "top_performers": [
+                {
+                    "rank": i,
+                    "coreVoltage": result["coreVoltage"],
+                    "frequency": result["frequency"],
+                    "averageHashRate": result["averageHashRate"],
+                    "averageTemperature": result["averageTemperature"],
+                    "efficiencyJTH": result["efficiencyJTH"]
+                }
+                for i, result in enumerate(top_5_results, 1)
+            ]
+        }
+        
+        # Save the final data to JSON
+        with open("bitaxe_benchmark_results.json", "w") as f:
+            json.dump(final_data, f, indent=4)
+        
         print(GREEN + "Benchmarking completed." + RESET)
         if top_5_results:
             print(GREEN + "\nTop 5 Performing Settings:" + RESET)
