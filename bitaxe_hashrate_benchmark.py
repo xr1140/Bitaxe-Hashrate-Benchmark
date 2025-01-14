@@ -62,24 +62,27 @@ results = []
 default_voltage = None
 default_frequency = None
 
+# Check if we're handling an interrupt (Ctrl+C)
+handling_interrupt = False
+
 def fetch_default_settings():
     global default_voltage, default_frequency, small_core_count, asic_count
     try:
         response = requests.get(f"{bitaxe_ip}/api/system/info", timeout=10)
         response.raise_for_status()
         system_info = response.json()
-        default_voltage = system_info.get("coreVoltage", 1250)  # Fallback to 1250 if not found
-        default_frequency = system_info.get("frequency", 550)  # Fallback to 550 if not found
+        default_voltage = system_info.get("coreVoltage", 1150)  # Fallback to 1150 if not found
+        default_frequency = system_info.get("frequency", 500)  # Fallback to 500 if not found
         small_core_count = system_info.get("smallCoreCount", 0)
         asic_count = system_info.get("asicCount", 0)
-        print(GREEN + f"Default settings determined:\n"
+        print(GREEN + f"Current settings determined:\n"
                       f"  Core Voltage: {default_voltage}mV\n"
                       f"  Frequency: {default_frequency}MHz\n"
                       f"  ASIC Configuration: {small_core_count * asic_count} total cores" + RESET)
     except requests.exceptions.RequestException as e:
         print(RED + f"Error fetching default system settings: {e}. Using fallback defaults." + RESET)
-        default_voltage = 1200
-        default_frequency = 550
+        default_voltage = 1150
+        default_frequency = 500
         small_core_count = 0
         asic_count = 0
 
@@ -87,9 +90,16 @@ def fetch_default_settings():
 system_reset_done = False
 
 def handle_sigint(signum, frame):
-    global system_reset_done
-    if not system_reset_done:
-        print(RED + "Benchmarking interrupted by user." + RESET)
+    global system_reset_done, handling_interrupt
+    
+    # If we're already handling an interrupt or have completed reset, ignore this signal
+    if handling_interrupt or system_reset_done:
+        return
+        
+    handling_interrupt = True
+    print(RED + "Benchmarking interrupted by user." + RESET)
+    
+    try:
         if results:
             reset_to_best_setting()
             save_results()
@@ -97,9 +107,10 @@ def handle_sigint(signum, frame):
         else:
             print(YELLOW + "No valid benchmarking results found. Applying predefined default settings." + RESET)
             set_system_settings(default_voltage, default_frequency)
-            restart_system()
+    finally:
         system_reset_done = True
-    sys.exit(0)
+        handling_interrupt = False
+        sys.exit(0)
 
 # Register the signal handler
 signal.signal(signal.SIGINT, handle_sigint)
