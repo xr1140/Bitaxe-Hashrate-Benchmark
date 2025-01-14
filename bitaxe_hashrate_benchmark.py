@@ -41,6 +41,7 @@ sample_interval = 30   # 30 seconds sample interval
 max_temp = 66         # Will stop if temperature reaches or exceeds this value
 max_allowed_voltage = 1400
 max_allowed_frequency = 1200
+max_vr_temp = 90  # Maximum allowed voltage regulator temperature
 
 # Add these variables to the global configuration section
 small_core_count = None
@@ -158,12 +159,19 @@ def benchmark_iteration(core_voltage, frequency):
             return None, None, None, False
         
         temp = info.get("temp")
+        vr_temp = info.get("vrTemp")  # Get VR temperature if available
+        
         if temp is None:
             print(YELLOW + "Temperature data not available." + RESET)
             return None, None, None, False
         
+        # Check both chip and VR temperatures
         if temp >= max_temp:
-            print(RED + f"Temperature exceeded {max_temp}°C! Stopping current benchmark." + RESET)
+            print(RED + f"Chip temperature exceeded {max_temp}°C! Stopping current benchmark." + RESET)
+            return None, None, None, False
+            
+        if vr_temp is not None and vr_temp >= max_vr_temp:
+            print(RED + f"Voltage regulator temperature exceeded {max_vr_temp}°C! Stopping current benchmark." + RESET)
             return None, None, None, False
         
         hash_rate = info.get("hashRate")
@@ -179,14 +187,17 @@ def benchmark_iteration(core_voltage, frequency):
         
         # Calculate percentage progress
         percentage_progress = ((sample + 1) / total_samples) * 100
-        print(YELLOW + (
-            f"[{sample + 1:2d}/{total_samples:2d}] "  # Progress counter with fixed width
-            f"{percentage_progress:5.1f}% | "         # Progress percentage with fixed width
-            f"V: {core_voltage}mV | "           # Voltage
-            f"F: {frequency}MHz | "             # Frequency
-            f"H: {int(hash_rate):4d} GH/s | "   # Hashrate with fixed width
-            f"T: {int(temp):2d}°C"              # Temperature with fixed width
-        ) + RESET)
+        status_line = (
+            f"[{sample + 1:2d}/{total_samples:2d}] "
+            f"{percentage_progress:5.1f}% | "
+            f"V: {core_voltage:4d}mV | "
+            f"F: {frequency:4d}MHz | "
+            f"H: {int(hash_rate):4d} GH/s | "
+            f"T: {int(temp):2d}°C"
+        )
+        if vr_temp is not None and vr_temp > 0:
+            status_line += f" | VR: {int(vr_temp):2d}°C"
+        print(YELLOW + status_line + RESET)
         
         # Only sleep if it's not the last iteration
         if sample < total_samples - 1:
@@ -222,9 +233,12 @@ def benchmark_iteration(core_voltage, frequency):
 
 def save_results():
     try:
-        with open("bitaxe_benchmark_results.json", "w") as f:
+        # Extract IP from bitaxe_ip global variable and remove 'http://'
+        ip_address = bitaxe_ip.replace('http://', '')
+        filename = f"bitaxe_benchmark_results_{ip_address}.json"
+        with open(filename, "w") as f:
             json.dump(results, f, indent=4)
-        print(GREEN + "Results saved to bitaxe_benchmark_results.json" + RESET)
+        print(GREEN + f"Results saved to {filename}" + RESET)
     except IOError as e:
         print(RED + f"Error saving results to file: {e}" + RESET)
 
@@ -247,6 +261,15 @@ def reset_to_best_setting():
 # Main benchmarking process
 try:
     fetch_default_settings()
+    
+    # Add disclaimer
+    print(RED + "\nDISCLAIMER:" + RESET)
+    print("This tool will stress test your Bitaxe by running it at various voltages and frequencies.")
+    print("While safeguards are in place, running hardware outside of standard parameters carries inherent risks.")
+    print("Use this tool at your own risk. The author(s) are not responsible for any damage to your hardware.")
+    print("\nNOTE: Ambient temperature significantly affects these results. The optimal settings found may not")
+    print("work well if room temperature changes substantially. Re-run the benchmark if conditions change.\n")
+    
     current_voltage = initial_voltage
     current_frequency = initial_frequency
     
@@ -327,7 +350,9 @@ finally:
         }
         
         # Save the final data to JSON
-        with open("bitaxe_benchmark_results.json", "w") as f:
+        ip_address = bitaxe_ip.replace('http://', '')
+        filename = f"bitaxe_benchmark_results_{ip_address}.json"
+        with open(filename, "w") as f:
             json.dump(final_data, f, indent=4)
         
         print(GREEN + "Benchmarking completed." + RESET)

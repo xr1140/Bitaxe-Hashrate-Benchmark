@@ -84,26 +84,47 @@ docker run --rm bitaxe-benchmark 192.168.2.26 -v 1200 -f 550
 
 The script includes several configurable parameters:
 
-- Maximum temperature: 66°C
+- Maximum chip temperature: 66°C
+- Maximum VR temperature: 90°C
 - Maximum allowed voltage: 1400mV
 - Maximum allowed frequency: 1200MHz
 - Benchmark duration: 20 minutes
 - Sample interval: 30 seconds
+- Voltage increment: 25mV
+- Frequency increment: 25MHz
 
 ## Output
 
 The benchmark results are saved to `bitaxe_benchmark_results.json`, containing:
-- Average hashrate
-- Temperature readings
-- Power efficiency metrics
-- Voltage/frequency combinations tested
+- Complete test results for all combinations
+- Top 5 performing configurations ranked by hashrate
+- For each configuration:
+  - Average hashrate
+  - Temperature readings
+  - Power efficiency metrics (J/TH)
+  - Voltage/frequency combinations tested
 
 ## Safety Features
 
-- Automatic temperature monitoring with safety cutoff
+- Automatic temperature monitoring with safety cutoff (66°C chip temp)
+- Voltage regulator (VR) temperature monitoring with safety cutoff (90°C)
 - Graceful shutdown on interruption (Ctrl+C)
 - Automatic reset to best performing settings after benchmarking
 - Input validation for safe voltage and frequency ranges
+- Hashrate validation to ensure stability
+
+## Benchmarking Process
+
+The tool follows this process:
+1. Starts with user-specified or default voltage/frequency
+2. Tests each combination for 20 minutes
+3. Validates hashrate is within 8% of theoretical maximum
+4. Incrementally adjusts settings:
+   - Increases frequency if stable
+   - Increases voltage if unstable
+   - Stops at thermal or stability limits
+5. Records and ranks all successful configurations
+6. Automatically applies the best performing stable settings
 
 ## Contributing
 
