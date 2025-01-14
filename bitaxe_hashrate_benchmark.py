@@ -3,6 +3,7 @@ import time
 import json
 import signal
 import sys
+import argparse
 
 # ANSI Color Codes
 GREEN = "\033[92m"
@@ -10,10 +11,29 @@ YELLOW = "\033[93m"
 RED = "\033[91m"
 RESET = "\033[0m"
 
+# Add this before the configuration section
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Bitaxe Hashrate Benchmark Tool')
+    parser.add_argument('bitaxe_ip', nargs='?', help='IP address of the Bitaxe (e.g., 192.168.2.26)')
+    parser.add_argument('-v', '--voltage', type=int, default=1150,
+                       help='Initial voltage in mV (default: 1150)')
+    parser.add_argument('-f', '--frequency', type=int, default=500,
+                       help='Initial frequency in MHz (default: 500)')
+    
+    # If no arguments are provided, print help and exit
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
+    
+    return parser.parse_args()
+
+# Replace the configuration section
+args = parse_arguments()
+bitaxe_ip = f"http://{args.bitaxe_ip}"
+initial_voltage = args.voltage
+initial_frequency = args.frequency
+
 # Configuration
-bitaxe_ip = "http://192.168.2.26"
-initial_voltage = 1150  # Starting voltage
-initial_frequency = 500  # Starting frequency
 voltage_increment = 25
 frequency_increment = 25
 benchmark_time = 1200   # 20 minutes benchmark time

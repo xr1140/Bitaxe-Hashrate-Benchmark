@@ -1,132 +1,109 @@
-Bitaxe Benchmarking Script
+# Bitaxe Hashrate Benchmark
 
+A Python-based benchmarking tool for optimizing Bitaxe mining performance by testing different voltage and frequency combinations while monitoring hashrate, temperature, and power efficiency.
 
-This repository contains a Python script designed to benchmark the Hashrate performance of a Bitaxe mining device. Tested on the Bitaxe Supra, should work with Ultra too. Hex not sure do the issue of Power Cycle after each new setting.
+## Features
 
+- Automated benchmarking of different voltage/frequency combinations
+- Temperature monitoring and safety cutoffs
+- Power efficiency calculations (J/TH)
+- Automatic saving of benchmark results
+- Graceful shutdown with best settings retention
+- Docker support for easy deployment
 
-The script tests various combinations of core voltages and frequencies to determine the optimal settings for maximum hashrate while maintaining safe operating temperatures.
+## Prerequisites
 
+- Python 3.11 or higher
+- Access to a Bitaxe miner on your network
+- Docker (optional, for containerized deployment)
 
+## Installation
 
-Features
+### Standard Installation
 
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/Bitaxe-Hashrate-Benchmark.git
+cd Bitaxe-Hashrate-Benchmark
+```
 
-Dynamic Configuration: Automatically fetches and uses the current default settings of the Bitaxe device.
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
+### Docker Installation
 
-Temperature Monitoring: Continuously monitors the device temperature during benchmarking to prevent overheating.
+1. Build the Docker image:
+```bash
+docker build -t bitaxe-benchmark .
+```
 
+## Usage
 
-Automated Benchmarking: Tests different combinations of core voltage and frequency and records the average hashrate and temperature.
+### Standard Usage
 
+Run the benchmark tool by providing your Bitaxe's IP address:
 
-Result Storage: Saves the benchmarking results in a JSON file for future analysis.
+```bash
+python bitaxe_hashrate_benchmark.py <bitaxe_ip>
+```
 
+Optional parameters:
+- `-v, --voltage`: Initial voltage in mV (default: 1150)
+- `-f, --frequency`: Initial frequency in MHz (default: 500)
 
-Graceful Interruption Handling: Captures interruptions (e.g., Ctrl+C) and resets the device to the best or default settings before exiting.
+Example:
+```bash
+python bitaxe_hashrate_benchmark.py 192.168.2.26 -v 1200 -f 550
+```
 
+### Docker Usage
 
-Cooling Down: Automatically cools down the device between benchmarks if necessary.
+Run the container with your Bitaxe's IP address:
 
+```bash
+docker run --rm bitaxe-benchmark <bitaxe_ip> [options]
+```
 
+Example:
+```bash
+docker run --rm bitaxe-benchmark 192.168.2.26 -v 1200 -f 550
+```
 
+## Configuration
 
-Configuration
+The script includes several configurable parameters:
 
+- Maximum temperature: 66°C
+- Maximum allowed voltage: 1400mV
+- Maximum allowed frequency: 1200MHz
+- Benchmark duration: 20 minutes
+- Sample interval: 30 seconds
 
-Before running the script, you can customize the following settings in the script:
+## Output
 
+The benchmark results are saved to `bitaxe_benchmark_results.json`, containing:
+- Average hashrate
+- Temperature readings
+- Power efficiency metrics
+- Voltage/frequency combinations tested
 
-    bitaxe_ip: IP address of your Bitaxe device (default: "http://192.168.2.117").
+## Safety Features
 
+- Automatic temperature monitoring with safety cutoff
+- Graceful shutdown on interruption (Ctrl+C)
+- Automatic reset to best performing settings after benchmarking
+- Input validation for safe voltage and frequency ranges
 
-    core_voltages: List of core voltages (in mV) to test (default: [1150, 1200, 1250]).
+## Contributing
 
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-    frequencies: List of frequencies (in MHz) to test (default: [550, 575, 600]).
+## License
 
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
 
-    cool_down_voltage: Voltage to use during cooldown (default: 1166 mV).
+## Disclaimer
 
-
-    cool_down_frequency: Frequency to use during cooldown (default: 400 MHz).
-
-
-    cool_down_time: Duration of cooldown between benchmarks (in seconds, default: 300 seconds).
-
-
-    benchmark_time: Duration of each benchmark (in seconds, default: 9000 seconds).
-
-
-    sample_interval: Interval between fetching system data during benchmarking (in seconds, default: 150 seconds).
-
-
-    max_temp: Maximum allowed temperature before stopping a benchmark (in °C, default: 66°C).
-
-
-    max_allowed_voltage: Maximum allowed core voltage (in mV, default: 1300 mV). DO ONLY MODIFY IF YOU KNOW WHAT YOU ARE DOING!
-
-
-    max_allowed_frequency: Maximum allowed frequency (in MHz, default: 600 MHz). DO ONLY MODIFY IF YOU KNOW WHAT YOU ARE DOING!
-
-
-
-
-Usage
-
-
-To run the script:
-
-    python bitaxe_hashrate_benchmark.py
-
-
-
-The script will perform the following actions:
-
-
-Fetch the default core voltage and frequency from the Bitaxe device.
-  
-Iterate through the specified voltages and frequencies, applying them to the device and benchmarking their performance.
-  
-Monitor and record the hashrate and temperature during each benchmark.
-  
-Save the results to bitaxe_benchmark_results.json.
-  
-Identify and apply the best performing settings after all benchmarks are completed.
-
-  
-
-Interrupt Handling
-
-
-If you need to stop the script during benchmarking, simply press Ctrl+C. The script will safely reset the Bitaxe device to the best or default settings and save all results before exiting.
-Benchmark Results
-
-After the script finishes, the top 5 performing settings will be displayed in the terminal and saved in the results file.
-Example Output:
-
-
-    Top 5 Performing Settings:
-
-    Rank 1:
-    Core Voltage: 1200mV
-    Frequency: 590MHz
-    Average Hashrate: 555.5 GH/s
-    Average Temperature: 60°C
-    Efficiency: 23.01 J/TH
-
-    Rank 2:
-    Core Voltage: 1250mV
-    Frequency: 575MHz
-    Average Hashrate: 666.6 GH/s
-    Average Temperature: 62°C
-    Efficiency: 22.34 J/TH
-    ...
-
-
-
-Contributions are welcome! Please feel free to submit a pull request or open an issue to suggest improvements.
-Acknowledgments
-
-
-Special thanks to the Bitaxe community and OSMU Discord for their continued support and feedback.
+Please use this tool responsibly. Overclocking and voltage modifications can potentially damage your hardware if not done carefully. Always ensure proper cooling and monitor your device during benchmarking.
