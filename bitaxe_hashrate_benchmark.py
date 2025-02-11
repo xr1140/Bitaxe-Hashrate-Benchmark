@@ -42,6 +42,7 @@ max_temp = 66         # Will stop if temperature reaches or exceeds this value
 max_allowed_voltage = 1400
 max_allowed_frequency = 1200
 max_vr_temp = 90  # Maximum allowed voltage regulator temperature
+min_input_voltage = 4800 # Minimum allowed input voltage
 
 # Add these variables to the global configuration section
 small_core_count = None
@@ -171,7 +172,7 @@ def benchmark_iteration(core_voltage, frequency):
         
         temp = info.get("temp")
         vr_temp = info.get("vrTemp")  # Get VR temperature if available
-        
+        voltage = info.get("voltage")
         if temp is None:
             print(YELLOW + "Temperature data not available." + RESET)
             return None, None, None, False
@@ -183,6 +184,10 @@ def benchmark_iteration(core_voltage, frequency):
             
         if vr_temp is not None and vr_temp >= max_vr_temp:
             print(RED + f"Voltage regulator temperature exceeded {max_vr_temp}°C! Stopping current benchmark." + RESET)
+            return None, None, None, False
+
+        if voltage < min_input_voltage:
+            print(RED + f"Input voltage is below the minimum allowed value of {min_input_voltage}mV! Stopping current benchmark." + RESET)
             return None, None, None, False
         
         hash_rate = info.get("hashRate")
@@ -201,9 +206,10 @@ def benchmark_iteration(core_voltage, frequency):
         status_line = (
             f"[{sample + 1:2d}/{total_samples:2d}] "
             f"{percentage_progress:5.1f}% | "
-            f"V: {core_voltage:4d}mV | "
+            f"CV: {core_voltage:4d}mV | "
             f"F: {frequency:4d}MHz | "
             f"H: {int(hash_rate):4d} GH/s | "
+            f"IV: {int(voltage):4d}mV | "
             f"T: {int(temp):2d}°C"
         )
         if vr_temp is not None and vr_temp > 0:
