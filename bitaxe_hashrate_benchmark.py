@@ -48,6 +48,10 @@ min_input_voltage = 4800 # Minimum allowed input voltage
 small_core_count = None
 asic_count = None
 
+# Add these constants to the configuration section
+min_allowed_voltage = 1000  # Minimum allowed core voltage
+min_allowed_frequency = 400  # Minimum allowed frequency
+
 # Validate core voltages
 if initial_voltage > max_allowed_voltage:
     raise ValueError(RED + f"Error: Initial voltage exceeds the maximum allowed value of {max_allowed_voltage}mV. Please check the input and try again." + RESET)
@@ -55,6 +59,13 @@ if initial_voltage > max_allowed_voltage:
 # Validate frequency
 if initial_frequency > max_allowed_frequency:
     raise ValueError(RED + f"Error: Initial frequency exceeds the maximum allowed value of {max_allowed_frequency}Mhz. Please check the input and try again." + RESET)
+
+# Add these validation checks after the existing ones
+if initial_voltage < min_allowed_voltage:
+    raise ValueError(RED + f"Error: Initial voltage is below the minimum allowed value of {min_allowed_voltage}mV." + RESET)
+
+if initial_frequency < min_allowed_frequency:
+    raise ValueError(RED + f"Error: Initial frequency is below the minimum allowed value of {min_allowed_frequency}MHz." + RESET)
 
 # Results storage
 results = []
@@ -169,34 +180,34 @@ def benchmark_iteration(core_voltage, frequency):
         info = get_system_info()
         if info is None:
             print(YELLOW + "Skipping this iteration due to failure in fetching system info." + RESET)
-            return None, None, None, False, None
+            return None, None, None, False, None, "SYSTEM_INFO_FAILURE"
         
         temp = info.get("temp")
         vr_temp = info.get("vrTemp")  # Get VR temperature if available
         voltage = info.get("voltage")
         if temp is None:
             print(YELLOW + "Temperature data not available." + RESET)
-            return None, None, None, False, None
+            return None, None, None, False, None, "TEMPERATURE_DATA_FAILURE"
         
         # Check both chip and VR temperatures
         if temp >= max_temp:
             print(RED + f"Chip temperature exceeded {max_temp}°C! Stopping current benchmark." + RESET)
-            return None, None, None, False, None
+            return None, None, None, False, None, "CHIP_TEMP_EXCEEDED"
             
         if vr_temp is not None and vr_temp >= max_vr_temp:
             print(RED + f"Voltage regulator temperature exceeded {max_vr_temp}°C! Stopping current benchmark." + RESET)
-            return None, None, None, False, None
+            return None, None, None, False, None, "VR_TEMP_EXCEEDED"
 
         if voltage < min_input_voltage:
             print(RED + f"Input voltage is below the minimum allowed value of {min_input_voltage}mV! Stopping current benchmark." + RESET)
-            return None, None, None, False, None
+            return None, None, None, False, None, "INPUT_VOLTAGE_BELOW_MIN"
         
         hash_rate = info.get("hashRate")
         power_consumption = info.get("power")
         
         if hash_rate is None or power_consumption is None:
             print(YELLOW + "Hashrate or Watts data not available." + RESET)
-            return None, None, None, False, None
+            return None, None, None, False, None, "HASHRATE_POWER_DATA_FAILURE"
         
         hash_rates.append(hash_rate)
         temperatures.append(temp)
@@ -248,7 +259,7 @@ def benchmark_iteration(core_voltage, frequency):
             efficiency_jth = average_power / (average_hashrate / 1_000)
         else:
             print(RED + "Warning: Zero hashrate detected, skipping efficiency calculation" + RESET)
-            return None, None, None, False, None
+            return None, None, None, False, None, "ZERO_HASHRATE"
         
         # Calculate if hashrate is within 6% of expected
         hashrate_within_tolerance = (average_hashrate >= expected_hashrate * 0.94)
@@ -259,10 +270,10 @@ def benchmark_iteration(core_voltage, frequency):
             print(GREEN + f"Average VR Temperature: {average_vr_temp:.2f}°C" + RESET)
         print(GREEN + f"Efficiency: {efficiency_jth:.2f} J/TH" + RESET)
         
-        return average_hashrate, average_temperature, efficiency_jth, hashrate_within_tolerance, average_vr_temp
+        return average_hashrate, average_temperature, efficiency_jth, hashrate_within_tolerance, average_vr_temp, None
     else:
         print(YELLOW + "No Hashrate or Temperature or Watts data collected." + RESET)
-        return None, None, None, False, None
+        return None, None, None, False, None, "NO_DATA_COLLECTED"
 
 def save_results():
     try:
@@ -308,7 +319,7 @@ try:
     
     while current_voltage <= max_allowed_voltage and current_frequency <= max_allowed_frequency:
         set_system_settings(current_voltage, current_frequency)
-        avg_hashrate, avg_temp, efficiency_jth, hashrate_ok, avg_vr_temp = benchmark_iteration(current_voltage, current_frequency)
+        avg_hashrate, avg_temp, efficiency_jth, hashrate_ok, avg_vr_temp, error_reason = benchmark_iteration(current_voltage, current_frequency)
         
         if avg_hashrate is not None and avg_temp is not None and efficiency_jth is not None:
             result = {
@@ -409,3 +420,24 @@ finally:
                     print(GREEN + f"  Average VR Temperature: {result['averageVRTemp']:.2f}°C" + RESET)
         else:
             print(RED + "No valid results were found during benchmarking." + RESET)
+
+# Add this new function to handle cleanup
+def cleanup_and_exit(reason=None):
+    global system_reset_done
+    if system_reset_done:
+        return
+        
+    try:
+        if results:
+            reset_to_best_setting()
+            save_results()
+            print(GREEN + "Bitaxe reset to best settings and results saved." + RESET)
+        else:
+            print(YELLOW + "No valid benchmarking results found. Applying predefined default settings." + RESET)
+            set_system_settings(default_voltage, default_frequency)
+    finally:
+        system_reset_done = True
+        if reason:
+            print(RED + f"Benchmarking stopped: {reason}" + RESET)
+        print(GREEN + "Benchmarking completed." + RESET)
+        sys.exit(0)
