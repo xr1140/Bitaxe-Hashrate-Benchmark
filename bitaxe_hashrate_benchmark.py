@@ -34,15 +34,17 @@ initial_voltage = args.voltage
 initial_frequency = args.frequency
 
 # Configuration
-voltage_increment = 25
+voltage_increment = 20
 frequency_increment = 25
-benchmark_time = 1200   # 20 minutes benchmark time
-sample_interval = 30   # 30 seconds sample interval
-max_temp = 66         # Will stop if temperature reaches or exceeds this value
-max_allowed_voltage = 1400
-max_allowed_frequency = 1200
-max_vr_temp = 90  # Maximum allowed voltage regulator temperature
-min_input_voltage = 4800 # Minimum allowed input voltage
+benchmark_time = 600          # 10 minutes benchmark time
+sample_interval = 15          # 15 seconds sample interval
+max_temp = 66                 # Will stop if temperature reaches or exceeds this value
+max_allowed_voltage = 1400    # Maximum allowed core voltage
+max_allowed_frequency = 1200  # Maximum allowed core frequency
+max_vr_temp = 86              # Maximum allowed voltage regulator temperature
+min_input_voltage = 4800      # Minimum allowed input voltage
+max_input_voltage = 5500      # Maximum allowed input voltage
+max_power = 40                # Max of 40W because of DC plug
 
 # Add these variables to the global configuration section
 small_core_count = None
@@ -163,15 +165,24 @@ def set_system_settings(core_voltage, frequency):
 
 def restart_system():
     try:
-        print(YELLOW + "Restarting Bitaxe system to apply new settings..." + RESET)
-        response = requests.post(f"{bitaxe_ip}/api/system/restart", timeout=10)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        time.sleep(60)  # Allow 60s time for the system to restart and start hashing
+        # Check if we're being called from handle_sigint
+        is_interrupt = handling_interrupt
+        
+        if not is_interrupt:
+            print(YELLOW + "Applying new settings and waiting 60s for system stabilization..." + RESET)
+            # response = requests.post(f"{bitaxe_ip}/api/system/restart", timeout=10)
+            # response.raise_for_status()  # Raise an exception for HTTP errors
+            time.sleep(60)  # Allow 60s time for the system to restart and start hashing
+        else:
+            print(YELLOW + "Applying final settings..." + RESET)
+            # response = requests.post(f"{bitaxe_ip}/api/system/restart", timeout=10)
+            # response.raise_for_status()  # Raise an exception for HTTP errors
     except requests.exceptions.RequestException as e:
         print(RED + f"Error restarting the system: {e}" + RESET)
 
 def benchmark_iteration(core_voltage, frequency):
-    print(GREEN + f"Starting benchmark for Core Voltage: {core_voltage}mV, Frequency: {frequency}MHz" + RESET)
+    current_time = time.strftime("%H:%M:%S")
+    print(GREEN + f"[{current_time}] Starting benchmark for Core Voltage: {core_voltage}mV, Frequency: {frequency}MHz" + RESET)
     hash_rates = []
     temperatures = []
     power_consumptions = []
@@ -192,6 +203,10 @@ def benchmark_iteration(core_voltage, frequency):
             print(YELLOW + "Temperature data not available." + RESET)
             return None, None, None, False, None, "TEMPERATURE_DATA_FAILURE"
         
+        if temp < 5:
+            print(YELLOW + "Temperature is below 5°C. This is unexpected. Please check the system." + RESET)
+            return None, None, None, False, None, "TEMPERATURE_BELOW_5"
+        
         # Check both chip and VR temperatures
         if temp >= max_temp:
             print(RED + f"Chip temperature exceeded {max_temp}°C! Stopping current benchmark." + RESET)
@@ -205,12 +220,20 @@ def benchmark_iteration(core_voltage, frequency):
             print(RED + f"Input voltage is below the minimum allowed value of {min_input_voltage}mV! Stopping current benchmark." + RESET)
             return None, None, None, False, None, "INPUT_VOLTAGE_BELOW_MIN"
         
+        if voltage > max_input_voltage:
+            print(RED + f"Input voltage is above the maximum allowed value of {max_input_voltage}mV! Stopping current benchmark." + RESET)
+            return None, None, None, False, None, "INPUT_VOLTAGE_ABOVE_MAX"
+        
         hash_rate = info.get("hashRate")
         power_consumption = info.get("power")
         
         if hash_rate is None or power_consumption is None:
             print(YELLOW + "Hashrate or Watts data not available." + RESET)
             return None, None, None, False, None, "HASHRATE_POWER_DATA_FAILURE"
+        
+        if power_consumption > max_power:
+            print(RED + f"Power consumption exceeded {max_power}W! Stopping current benchmark." + RESET)
+            return None, None, None, False, None, "POWER_CONSUMPTION_EXCEEDED"
         
         hash_rates.append(hash_rate)
         temperatures.append(temp)
@@ -231,7 +254,7 @@ def benchmark_iteration(core_voltage, frequency):
         )
         if vr_temp is not None and vr_temp > 0:
             status_line += f" | VR: {int(vr_temp):2d}°C"
-        print(YELLOW + status_line + RESET)
+        print(status_line + RESET)
         
         # Only sleep if it's not the last iteration
         if sample < total_samples - 1:
@@ -286,6 +309,8 @@ def save_results():
         with open(filename, "w") as f:
             json.dump(results, f, indent=4)
         print(GREEN + f"Results saved to {filename}" + RESET)
+        print()  # Add empty line
+        
     except IOError as e:
         print(RED + f"Error saving results to file: {e}" + RESET)
 
@@ -385,6 +410,7 @@ finally:
     if results:
         # Sort results by averageHashRate in descending order and get the top 5
         top_5_results = sorted(results, key=lambda x: x["averageHashRate"], reverse=True)[:5]
+        top_5_efficient_results = sorted(results, key=lambda x: x["efficiencyJTH"], reverse=False)[:5]
         
         # Create a dictionary containing all results and top performers
         final_data = {
@@ -400,6 +426,18 @@ finally:
                     **({"averageVRTemp": result["averageVRTemp"]} if "averageVRTemp" in result else {})
                 }
                 for i, result in enumerate(top_5_results, 1)
+            ],
+            "most_efficient": [
+                {
+                    "rank": i,
+                    "coreVoltage": result["coreVoltage"],
+                    "frequency": result["frequency"],
+                    "averageHashRate": result["averageHashRate"],
+                    "averageTemperature": result["averageTemperature"],
+                    "efficiencyJTH": result["efficiencyJTH"],
+                    **({"averageVRTemp": result["averageVRTemp"]} if "averageVRTemp" in result else {})
+                }
+                for i, result in enumerate(top_5_efficient_results, 1)
             ]
         }
         
@@ -411,8 +449,19 @@ finally:
         
         print(GREEN + "Benchmarking completed." + RESET)
         if top_5_results:
-            print(GREEN + "\nTop 5 Performing Settings:" + RESET)
+            print(GREEN + "\nTop 5 Highest Hashrate Settings:" + RESET)
             for i, result in enumerate(top_5_results, 1):
+                print(GREEN + f"\nRank {i}:" + RESET)
+                print(GREEN + f"  Core Voltage: {result['coreVoltage']}mV" + RESET)
+                print(GREEN + f"  Frequency: {result['frequency']}MHz" + RESET)
+                print(GREEN + f"  Average Hashrate: {result['averageHashRate']:.2f} GH/s" + RESET)
+                print(GREEN + f"  Average Temperature: {result['averageTemperature']:.2f}°C" + RESET)
+                print(GREEN + f"  Efficiency: {result['efficiencyJTH']:.2f} J/TH" + RESET)
+                if "averageVRTemp" in result:
+                    print(GREEN + f"  Average VR Temperature: {result['averageVRTemp']:.2f}°C" + RESET)
+            
+            print(GREEN + "\nTop 5 Most Efficient Settings:" + RESET)
+            for i, result in enumerate(top_5_efficient_results, 1):
                 print(GREEN + f"\nRank {i}:" + RESET)
                 print(GREEN + f"  Core Voltage: {result['coreVoltage']}mV" + RESET)
                 print(GREEN + f"  Frequency: {result['frequency']}MHz" + RESET)
