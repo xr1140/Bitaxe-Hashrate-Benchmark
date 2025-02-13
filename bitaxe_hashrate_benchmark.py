@@ -67,6 +67,9 @@ if initial_voltage < min_allowed_voltage:
 if initial_frequency < min_allowed_frequency:
     raise ValueError(RED + f"Error: Initial frequency is below the minimum allowed value of {min_allowed_frequency}MHz." + RESET)
 
+if benchmark_time / sample_interval < 7:
+    raise ValueError(RED + f"Error: Benchmark time is too short. Please increase the benchmark time or decrease the sample interval. At least 7 samples are required." + RESET)
+
 # Results storage
 results = []
 
