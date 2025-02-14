@@ -139,6 +139,8 @@ The tool follows this process:
    - Stops at thermal or stability limits
 5. Records and ranks all successful configurations
 6. Automatically applies the best performing stable settings
+7. Restarts system after each test for stability
+8. Allows 90-second stabilization period between tests
 
 ## Data Processing
 
