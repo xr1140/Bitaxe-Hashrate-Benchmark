@@ -16,6 +16,7 @@ A Python-based benchmarking tool for optimizing Bitaxe mining performance by tes
 - Python 3.11 or higher
 - Access to a Bitaxe miner on your network
 - Docker (optional, for containerized deployment)
+- Git (optional, for cloning the repository)
 
 ## Installation
 
@@ -67,7 +68,7 @@ Example:
 python bitaxe_hashrate_benchmark.py 192.168.2.29 -v 1175 -f 775
 ```
 
-### Docker Usage
+### Docker Usage (Optional)
 
 Run the container with your Bitaxe's IP address:
 
