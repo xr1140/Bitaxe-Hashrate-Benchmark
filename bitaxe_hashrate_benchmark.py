@@ -34,17 +34,25 @@ initial_voltage = args.voltage
 initial_frequency = args.frequency
 
 # Configuration
+# # 40 passes with 15 seconds each
+# benchmark_time = 600          # 10 minutes benchmark time
+# sample_interval = 15          # 15 seconds sample interval
+# outliers = 3                  # Number of outliers to remove from hashrate
+
+# 15 passes with 20 seconds each
+benchmark_time = 300          # 5 minutes benchmark time
+sample_interval = 20          # 20 seconds sample interval
+outliers = 2                  # Number of outliers to remove from hashrate
+
 voltage_increment = 20
 frequency_increment = 25
-benchmark_time = 600          # 10 minutes benchmark time
-sample_interval = 15          # 15 seconds sample interval
 max_temp = 66                 # Will stop if temperature reaches or exceeds this value
-max_allowed_voltage = 1400    # Maximum allowed core voltage
-max_allowed_frequency = 1200  # Maximum allowed core frequency
-max_vr_temp = 86              # Maximum allowed voltage regulator temperature
+max_vr_temp = 80              # Maximum allowed voltage regulator temperature
+max_allowed_voltage = 1200    # Maximum allowed core voltage
+max_allowed_frequency = 800   # Maximum allowed core frequency
 min_input_voltage = 4800      # Minimum allowed input voltage
 max_input_voltage = 5500      # Maximum allowed input voltage
-max_power = 40                # Max of 40W because of DC plug
+max_power = 25                # Max of 40W because of DC plug
 
 # Add these variables to the global configuration section
 small_core_count = None
@@ -182,16 +190,16 @@ def restart_system():
     except requests.exceptions.RequestException as e:
         print(RED + f"Error restarting the system: {e}" + RESET)
 
-def benchmark_iteration(core_voltage, frequency):
-    current_time = time.strftime("%H:%M:%S")
-    print(GREEN + f"[{current_time}] Starting benchmark for Core Voltage: {core_voltage}mV, Frequency: {frequency}MHz" + RESET)
+def benchmark_iteration(core_voltage, frequency):    
     hash_rates = []
     temperatures = []
     power_consumptions = []
-    vr_temps = []
+    vr_temps = []    
     total_samples = benchmark_time // sample_interval
     expected_hashrate = frequency * ((small_core_count * asic_count) / 1000)  # Calculate expected hashrate based on frequency
-    
+    current_time = time.strftime("%H:%M:%S")    
+    print(GREEN + f"[{current_time}] Starting benchmark for Core Voltage: {core_voltage}mV, Frequency: {frequency}MHz, Expected Hashrate: {expected_hashrate}GH/s" + RESET)
+
     for sample in range(total_samples):
         info = get_system_info()
         if info is None:
@@ -263,9 +271,9 @@ def benchmark_iteration(core_voltage, frequency):
             time.sleep(sample_interval)
     
     if hash_rates and temperatures and power_consumptions:
-        # Remove 3 highest and 3 lowest hashrates in case of outliers
+        # Remove highest and lowest hashrates - outliers
         sorted_hashrates = sorted(hash_rates)
-        trimmed_hashrates = sorted_hashrates[3:-3]  # Remove first 3 and last 3 elements
+        trimmed_hashrates = sorted_hashrates[outliers:-outliers]  # Remove first and last {outliers} elements
         average_hashrate = sum(trimmed_hashrates) / len(trimmed_hashrates)
         
         # Sort and trim temperatures (remove lowest 6 readings during warmup)
@@ -346,6 +354,8 @@ try:
     
     current_voltage = initial_voltage
     current_frequency = initial_frequency
+
+    next_protocol = "~"
     
     while current_voltage <= max_allowed_voltage and current_frequency <= max_allowed_frequency:
         set_system_settings(current_voltage, current_frequency)
@@ -366,20 +376,45 @@ try:
                 
             results.append(result)
 
+
+            print(GREEN + f"next_protocol: {next_protocol}" + RESET)
+
             if hashrate_ok:
                 # If hashrate is good, try increasing frequency
                 if current_frequency + frequency_increment <= max_allowed_frequency:
                     current_frequency += frequency_increment
+
+                    next_protocol = "~"
                 else:
                     break  # We've reached max frequency with good results
             else:
-                # If hashrate is not good, go back one frequency step and increase voltage
-                if current_voltage + voltage_increment <= max_allowed_voltage:
-                    current_voltage += voltage_increment
-                    current_frequency -= frequency_increment  # Go back to one frequency step and retry
-                    print(YELLOW + f"Hashrate to low compared to expected. Decreasing frequency to {current_frequency}MHz and increasing voltage to {current_voltage}mV" + RESET)
-                else:
-                    break  # We've reached max voltage without good results
+                if next_protocol == "~":
+
+                    # If hashrate is not good, go back one frequency step and increase voltage
+                    if current_voltage + voltage_increment <= max_allowed_voltage:
+                        current_voltage += voltage_increment
+
+                        next_protocol = "voltage_increase"
+
+                        # current_frequency -= frequency_increment  # Go back to one frequency step and retry
+                        # print(YELLOW + f"Hashrate to low compared to expected. Decreasing frequency to {current_frequency}MHz and increasing voltage to {current_voltage}mV" + RESET)
+                        print(YELLOW + f"Hashrate too low compared to expected. Increasing voltage to {current_voltage}mV" + RESET)                    
+                    else:
+                        break  # We've reached max voltage without good results
+
+                elif next_protocol == "voltage_increase":
+
+                    # If hashrate is not good, go back one frequency step and increase voltage
+                    if current_voltage + voltage_increment <= max_allowed_voltage:
+                        # current_voltage += voltage_increment
+
+                        next_protocol = "frequency_decrease"
+
+                        current_frequency -= frequency_increment  # Go back to one frequency step and retry
+                        print(YELLOW + f"Hashrate to low compared to expected. Decreasing frequency to {current_frequency}MHz" + RESET)
+                    else:
+                        break  # We've reached max voltage without good results                    
+
         else:
             # If we hit thermal limits or other issues, we've found the highest safe settings
             print(GREEN + "Reached thermal or stability limits. Stopping further testing." + RESET)
